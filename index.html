@@ -1572,7 +1572,7 @@ async function generateBatchPrompts() {
 function renderResults() {
   const area = $('#resultsArea');
   const results = state.results;
-  const cards = CATEGORIES.filter(c => results[c.id]).map(c => {
+  let cards = CATEGORIES.filter(c => results[c.id]).map(c => {
     const rawText = results[c.id];
     const filterResult = filterContent(rawText);
     const displayText = filterResult.filtered;
