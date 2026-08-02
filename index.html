@@ -1,0 +1,2056 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图片提示词拆解器 - Image Prompt Decomposer</title>
+<style>
+/* ===== CSS Variables & Reset ===== */
+:root {
+  --bg: #0d0d14; --bg2: #161622; --bg3: #1e1e30; --bg4: #262640;
+  --border: #2a2a45; --text: #e0dce8; --text2: #a09ab8; --text3: #6b6580;
+  --accent: #7c5cf0; --accent2: #9b7ff8; --accent-glow: rgba(124, 92, 240, 0.25);
+  --green: #3dd68c; --green-bg: rgba(61, 214, 140, 0.12);
+  --orange: #f4a04e; --orange-bg: rgba(244, 160, 78, 0.12);
+  --red: #e5484d; --red-bg: rgba(229, 72, 77, 0.12);
+  --blue: #4ea8f4; --blue-bg: rgba(78, 168, 244, 0.12);
+  --radius: 10px; --radius-sm: 6px; --radius-lg: 16px;
+  --shadow: 0 2px 12px rgba(0,0,0,0.3);
+  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --toast-bg: var(--bg4);
+}
+[data-theme="light"] {
+  --bg: #f5f4f8; --bg2: #ffffff; --bg3: #f0eef5; --bg4: #e8e5f0;
+  --border: #d8d5e5; --text: #2d2938; --text2: #5c5780; --text3: #8b85a5;
+  --accent: #6c4ce0; --accent2: #7c5cf0; --accent-glow: rgba(108, 76, 224, 0.18);
+  --green: #1a9e5e; --green-bg: rgba(26, 158, 94, 0.1);
+  --orange: #d48030; --orange-bg: rgba(212, 128, 48, 0.1);
+  --red: #d13040; --red-bg: rgba(209, 48, 64, 0.1);
+  --blue: #3080d8; --blue-bg: rgba(48, 128, 216, 0.1);
+  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  --toast-bg: #ffffff;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh; overflow-x: hidden;
+}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+.app { max-width: 1440px; margin: 0 auto; padding: 20px 24px; display: grid; grid-template-columns: 420px 1fr; gap: 24px; min-height: 100vh; }
+@media (max-width: 1024px) { .app { grid-template-columns: 1fr; max-width: 640px; } }
+
+.header { grid-column: 1/-1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding-bottom: 8px; }
+.header h1 { font-size: 1.6rem; font-weight: 700; background: linear-gradient(135deg, var(--accent2), #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header-right { display: flex; gap: 8px; align-items: center; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
+  border-radius: var(--radius-sm); font-size: 0.875rem; font-weight: 500;
+  cursor: pointer; border: 1px solid transparent; transition: var(--transition);
+  white-space: nowrap; font-family: inherit;
+}
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary:hover { background: var(--accent2); box-shadow: 0 0 20px var(--accent-glow); }
+.btn-outline { background: transparent; color: var(--text2); border-color: var(--border); }
+.btn-outline:hover { border-color: var(--text3); color: var(--text); }
+.btn-ghost { background: transparent; color: var(--text2); padding: 6px 10px; }
+.btn-ghost:hover { color: var(--text); background: var(--bg3); }
+.btn-sm { padding: 4px 10px; font-size: 0.8rem; }
+.btn-xs { padding: 2px 8px; font-size: 0.75rem; border-radius: 4px; }
+
+.mode-tabs { display: flex; gap: 4px; background: var(--bg2); border-radius: var(--radius); padding: 4px; }
+.mode-tab {
+  padding: 8px 18px; border-radius: var(--radius-sm); font-size: 0.875rem;
+  cursor: pointer; border: none; background: transparent; color: var(--text2);
+  transition: var(--transition); font-family: inherit; font-weight: 500;
+}
+.mode-tab:hover { color: var(--text); }
+.mode-tab.active { background: var(--accent); color: #fff; box-shadow: var(--shadow); }
+
+.toggle-group { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text2); }
+.toggle-switch { position: relative; width: 46px; height: 26px; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider { position: absolute; inset: 0; background: var(--bg3); border-radius: 13px; cursor: pointer; transition: var(--transition); border: 1px solid var(--border); }
+.toggle-slider::before { content: ""; position: absolute; width: 20px; height: 20px; left: 2px; bottom: 2px; background: var(--text2); border-radius: 50%; transition: var(--transition); }
+.toggle-switch input:checked + .toggle-slider { background: var(--accent); border-color: var(--accent); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); background: #fff; }
+
+.lang-toggle {
+  padding: 6px 12px; border-radius: var(--radius-sm); font-size: 0.8rem; font-weight: 600;
+  cursor: pointer; background: var(--bg3); color: var(--text2); border: 1px solid var(--border);
+  transition: var(--transition); font-family: inherit; letter-spacing: 0.5px;
+}
+.lang-toggle:hover { border-color: var(--accent); color: var(--accent2); }
+.lang-toggle.active-lang { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.theme-toggle {
+  padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.85rem;
+  cursor: pointer; background: var(--bg3); color: var(--text2); border: 1px solid var(--border);
+  transition: var(--transition); font-family: inherit; line-height: 1;
+}
+.theme-toggle:hover { border-color: var(--accent); color: var(--accent2); }
+.safety-toggle {
+  padding: 6px 12px; border-radius: var(--radius-sm); font-size: 0.8rem; font-weight: 600;
+  cursor: pointer; background: var(--green-bg); color: var(--green); border: 1px solid rgba(61,214,140,0.3);
+  transition: var(--transition); font-family: inherit; display: flex; align-items: center; gap: 5px;
+}
+.safety-toggle:hover { border-color: var(--green); box-shadow: 0 0 12px rgba(61,214,140,0.2); }
+.safety-toggle.off { background: var(--red-bg); color: var(--red); border-color: rgba(229,72,77,0.3); }
+.safety-toggle.off:hover { border-color: var(--red); box-shadow: 0 0 12px rgba(229,72,77,0.2); }
+.safety-warning {
+  background: var(--red-bg); border: 1px solid rgba(229,72,77,0.4); border-radius: var(--radius-sm);
+  padding: 8px 14px; margin-top: 10px; font-size: 0.8rem; color: var(--red);
+  display: flex; align-items: center; gap: 6px;
+}
+.safety-blocked {
+  background: var(--red-bg); color: var(--red); padding: 3px 8px; border-radius: 4px;
+  font-size: 0.7rem; font-weight: 600;
+}
+.safety-clean {
+  background: var(--green-bg); color: var(--green); padding: 3px 8px; border-radius: 4px;
+  font-size: 0.7rem; font-weight: 600;
+}
+
+.panel { background: var(--bg2); border-radius: var(--radius-lg); border: 1px solid var(--border); overflow: hidden; }
+.panel-header { padding: 16px 20px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
+.panel-body { padding: 20px; }
+
+.upload-zone {
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 48px 24px; text-align: center; cursor: pointer; transition: var(--transition);
+  background: var(--bg3); position: relative; overflow: hidden;
+}
+.upload-zone:hover, .upload-zone.drag-over { border-color: var(--accent); background: var(--bg4); }
+.upload-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.6; }
+.upload-zone h3 { font-size: 1rem; color: var(--text2); margin-bottom: 4px; }
+.upload-zone p { font-size: 0.8rem; color: var(--text3); }
+.upload-zone img { max-width: 100%; max-height: 360px; border-radius: var(--radius-sm); }
+.upload-zone.has-image { padding: 12px; border-style: solid; border-color: var(--accent); }
+
+.collapsible-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; cursor: pointer; user-select: none;
+  border-radius: var(--radius-sm); transition: var(--transition);
+}
+.collapsible-header:hover { background: var(--bg3); }
+.collapsible-content { padding: 0 16px 16px; display: none; }
+.collapsible.open .collapsible-content { display: block; }
+.collapsible.open .collapse-arrow { transform: rotate(180deg); }
+.collapse-arrow { transition: var(--transition); font-size: 0.7rem; color: var(--text3); }
+
+.form-group { margin-bottom: 14px; }
+.form-label { display: block; font-size: 0.8rem; color: var(--text2); margin-bottom: 4px; font-weight: 500; }
+.form-input, .form-select {
+  width: 100%; padding: 9px 12px; background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text); font-size: 0.875rem;
+  font-family: inherit; transition: var(--transition);
+}
+.form-input:focus, .form-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+.form-input::placeholder { color: var(--text3); }
+
+.category-grid { display: flex; flex-direction: column; gap: 10px; }
+.category-row {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  background: var(--bg3); border-radius: var(--radius-sm); border: 1px solid transparent;
+  transition: var(--transition);
+}
+.category-row:hover { border-color: var(--border); }
+.category-icon { font-size: 1.2rem; width: 28px; text-align: center; flex-shrink: 0; }
+.category-name { width: 60px; font-weight: 600; font-size: 0.85rem; flex-shrink: 0; }
+.category-controls { display: flex; gap: 6px; align-items: center; flex: 1; justify-content: flex-end; }
+.category-select {
+  padding: 5px 8px; font-size: 0.78rem; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text); font-family: inherit; cursor: pointer;
+}
+.category-select:focus { outline: none; border-color: var(--accent); }
+.badge {
+  font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 500;
+  white-space: nowrap;
+}
+.badge-simple { background: var(--green-bg); color: var(--green); }
+.badge-complex { background: var(--blue-bg); color: var(--blue); }
+.badge-ultra { background: var(--orange-bg); color: var(--orange); }
+.badge-precise { background: var(--blue-bg); color: var(--blue); }
+.badge-fuzzy { background: var(--orange-bg); color: var(--orange); }
+
+.result-card {
+  background: var(--bg3); border-radius: var(--radius); border: 1px solid var(--border);
+  margin-bottom: 12px; overflow: hidden; transition: var(--transition);
+}
+.result-card:hover { border-color: var(--text3); }
+.result-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: var(--bg4); cursor: pointer; user-select: none;
+}
+.result-card-header h4 { font-size: 0.9rem; display: flex; align-items: center; gap: 8px; }
+.result-card-body { padding: 16px; display: none; }
+.result-card.open .result-card-body { display: block; }
+.result-text {
+  font-size: 0.875rem; line-height: 1.8; color: var(--text);
+  background: var(--bg2); padding: 14px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); white-space: pre-wrap; word-break: break-word;
+}
+.result-actions { display: flex; gap: 6px; margin-top: 10px; }
+
+.status-bar {
+  padding: 10px 16px; border-radius: var(--radius-sm); font-size: 0.85rem;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
+}
+.status-loading { background: var(--blue-bg); color: var(--blue); }
+.status-success { background: var(--green-bg); color: var(--green); }
+.status-error { background: var(--red-bg); color: var(--red); }
+.spinner {
+  width: 18px; height: 18px; border: 2px solid transparent;
+  border-top-color: currentColor; border-radius: 50%; animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
+.toast {
+  padding: 10px 18px; background: var(--toast-bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); font-size: 0.85rem; color: var(--text);
+  box-shadow: var(--shadow); animation: slideIn 0.3s ease; max-width: 360px;
+}
+@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text3); }
+.empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+
+/* Batch processing */
+.thumbnail-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.thumbnail-item {
+  position: relative; width: 64px; height: 64px; border-radius: var(--radius-sm);
+  overflow: hidden; cursor: pointer; border: 2px solid var(--border); transition: var(--transition);
+  flex-shrink: 0;
+}
+.thumbnail-item:hover { border-color: var(--text3); }
+.thumbnail-item.active { border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+.thumbnail-item img { width: 100%; height: 100%; object-fit: cover; }
+.thumbnail-item .thumb-status {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.5); font-size: 0.7rem; font-weight: 600;
+}
+.thumb-status.done { background: rgba(61,214,140,0.5); color: #fff; }
+.thumb-status.error { background: rgba(229,72,77,0.5); color: #fff; }
+.thumb-status.running { background: rgba(78,168,244,0.5); color: #fff; }
+.thumb-remove {
+  position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%;
+  background: rgba(0,0,0,0.6); color: #fff; border: none; cursor: pointer; font-size: 10px;
+  display: flex; align-items: center; justify-content: center; transition: var(--transition);
+  opacity: 0;
+}
+.thumbnail-item:hover .thumb-remove { opacity: 1; }
+
+.progress-bar-wrap {
+  background: var(--bg3); border-radius: var(--radius-sm); height: 8px; margin: 10px 0;
+  overflow: hidden; display: none;
+}
+.progress-bar-wrap.active { display: block; }
+.progress-bar-fill {
+  height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+  border-radius: var(--radius-sm); transition: width 0.3s ease; width: 0%;
+}
+.progress-text { font-size: 0.78rem; color: var(--text2); text-align: center; display: none; }
+.progress-text.active { display: block; }
+
+.image-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.image-tab {
+  padding: 6px 14px; border-radius: var(--radius-sm); font-size: 0.8rem; cursor: pointer;
+  background: var(--bg3); color: var(--text2); border: 1px solid var(--border);
+  transition: var(--transition); font-family: inherit; white-space: nowrap;
+  max-width: 160px; overflow: hidden; text-overflow: ellipsis;
+}
+.image-tab:hover { border-color: var(--text3); color: var(--text); }
+.image-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.image-tab .tab-status { margin-left: 4px; font-size: 0.7rem; }
+
+.batch-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+/* History panel */
+.history-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-radius: var(--radius-sm); cursor: pointer; transition: var(--transition);
+  border: 1px solid transparent; margin-bottom: 4px;
+}
+.history-item:hover { background: var(--bg3); border-color: var(--border); }
+.history-item.active { background: var(--bg3); border-color: var(--accent); }
+.history-thumb {
+  width: 44px; height: 44px; border-radius: 6px; object-fit: cover;
+  flex-shrink: 0; background: var(--bg4);
+}
+.history-info { flex: 1; min-width: 0; }
+.history-info .name { font-size: 0.82rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history-info .meta { font-size: 0.72rem; color: var(--text3); margin-top: 2px; }
+.history-delete {
+  width: 28px; height: 28px; border-radius: 50%; border: none; cursor: pointer;
+  background: transparent; color: var(--text3); font-size: 0.8rem; transition: var(--transition);
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+}
+.history-delete:hover { background: var(--red-bg); color: var(--red); }
+
+/* Inline editing */
+.result-text.editing { padding: 0; background: transparent; border: none; }
+.result-text-edit {
+  width: 100%; min-height: 80px; padding: 14px; background: var(--bg3);
+  border: 1px solid var(--accent); border-radius: var(--radius-sm); color: var(--text);
+  font-size: 0.875rem; line-height: 1.8; font-family: inherit; resize: vertical;
+  outline: none; box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.edit-hint { font-size: 0.7rem; color: var(--text3); margin-top: 4px; text-align: right; }
+
+@media (max-width: 640px) {
+  .app { padding: 12px; }
+  .header h1 { font-size: 1.3rem; }
+  .category-row { flex-wrap: wrap; }
+  .category-controls { width: 100%; justify-content: flex-start; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="header">
+    <h1 data-i18n="title">🎨 图片提示词拆解器</h1>
+    <div class="header-right">
+      <button class="lang-toggle active-lang" data-lang="zh" id="langZh">中文</button>
+      <button class="lang-toggle" data-lang="en" id="langEn">EN</button>
+      <button class="theme-toggle" id="themeToggle" title="切换主题">🌙</button>
+      <button class="safety-toggle" id="safetyToggle" title="安全过滤模式">🛡️ 安全</button>
+      <div class="mode-tabs" id="modeTabs">
+        <button class="mode-tab active" data-mode="simple" data-i18n="mode.simple">精简模式</button>
+        <button class="mode-tab" data-mode="complex" data-i18n="mode.complex">复杂模式</button>
+        <button class="mode-tab" data-mode="ultra" data-i18n="mode.ultra">超精细模式</button>
+        <button class="mode-tab custom" data-mode="custom" data-i18n="mode.custom">⭾ 自定义</button>
+      </div>
+      <div class="toggle-group">
+        <span id="toggleLabel" data-i18n="style.precise">精准</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="styleToggle">
+          <span class="toggle-slider"></span>
+        </label>
+        <span id="toggleLabel2" data-i18n="style.fuzzy">模糊</span>
+      </div>
+      <div class="toggle-group">
+        <span data-i18n="outputLang.label">输出语言</span>
+        <select id="outputLangSel" class="category-select" style="font-size:0.82rem">
+          <option value="zh">中文</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <aside class="left-panel">
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-header" data-i18n="upload.title">📷 上传图片</div>
+      <div class="panel-body">
+        <div class="upload-zone" id="uploadZone">
+          <div id="uploadPlaceholder">
+            <div class="upload-icon">🖼️</div>
+            <h3 data-i18n="upload.hint">点击或拖拽上传图片</h3>
+            <p data-i18n="upload.formats">支持 JPG / PNG / WebP，最大 20MB</p>
+          </div>
+          <img id="uploadPreview" style="display:none" data-i18n-placeholder="upload.previewAlt" alt="预览">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <input type="text" class="form-input" id="urlInput" data-i18n-placeholder="upload.urlPlaceholder" placeholder="或粘贴图片URL..." style="flex:1">
+          <button class="btn btn-outline btn-sm" id="loadUrlBtn" data-i18n="upload.loadBtn">加载</button>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" multiple style="display:none">
+        <div class="thumbnail-strip" id="thumbnailStrip"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <div class="collapsible open" id="apiCollapsible">
+        <div class="collapsible-header" id="apiToggle">
+          <span data-i18n="api.title">⚙️ API 配置</span>
+          <span class="collapse-arrow">▼</span>
+        </div>
+        <div class="collapsible-content">
+          <div class="form-group">
+            <label class="form-label" data-i18n="api.provider">API 提供商</label>
+            <select class="form-select" id="apiProvider">
+              <option value="openai" data-i18n="api.providerOpt1">OpenAI 兼容 (DeepSeek / OpenAI / 硅基流动等)</option>
+              <option value="claude" data-i18n="api.providerOpt2">Anthropic Claude</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="api.endpoint">API Endpoint</label>
+            <input class="form-input" id="apiEndpoint" placeholder="https://api.siliconflow.cn/v1/chat/completions">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="api.key">API Key</label>
+            <input class="form-input" type="password" id="apiKey" placeholder="sk-...">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="api.model">模型名称</label>
+            <input class="form-input" id="modelName" placeholder="Qwen/Qwen3-VL-8B-Instruct">
+          </div>
+          <button class="btn btn-outline btn-sm" id="saveApiConfig" data-i18n="api.saveBtn">💾 保存配置</button>
+          <span style="font-size:0.72rem;color:var(--text3);margin-left:8px" data-i18n="api.savedNote">配置保存在本地浏览器中</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <span data-i18n="categories.title">🎯 类别精细度设置</span>
+        <span style="font-size:0.75rem;color:var(--text3);font-weight:400;margin-left:4px" data-i18n="categories.hint">（自定义模式下可独立调节）</span>
+      </div>
+      <div class="panel-body" style="padding:12px">
+        <div class="category-grid" id="categoryGrid"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <div class="collapsible" id="historyCollapsible">
+        <div class="collapsible-header" id="historyToggle">
+          <span data-i18n="history.title">📋 历史记录</span>
+          <span style="font-size:0.75rem;color:var(--text3);margin-left:4px" id="historyCount"></span>
+          <span class="collapse-arrow" style="margin-left:auto">▼</span>
+        </div>
+        <div class="collapsible-content">
+          <div style="display:flex;gap:6px;margin-bottom:10px">
+            <input class="form-input" id="historySearch" data-i18n-placeholder="history.searchPlaceholder" placeholder="搜索历史记录..." style="flex:1;font-size:0.8rem;padding:6px 10px">
+            <button class="btn btn-ghost btn-sm" id="clearAllHistory" data-i18n="history.clearAll" style="color:var(--red);font-size:0.75rem">🗑️ 清空</button>
+          </div>
+          <div id="historyList" style="max-height:360px;overflow-y:auto">
+            <div style="text-align:center;padding:20px;color:var(--text3);font-size:0.8rem" data-i18n="history.empty">暂无历史记录</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="generateBtn" style="width:100%;margin-top:16px;padding:14px;font-size:1rem;justify-content:center" data-i18n="generate.btn">
+      🚀 生成提示词
+    </button>
+    <div class="progress-bar-wrap" id="progressWrap"><div class="progress-bar-fill" id="progressFill"></div></div>
+    <div class="progress-text" id="progressText"></div>
+    <div class="batch-actions" id="batchActions" style="display:none">
+      <button class="btn btn-outline btn-sm" id="clearBatchBtn" data-i18n="batch.clear">🗑️ 清空队列</button>
+      <span style="font-size:0.75rem;color:var(--text3);margin-left:4px" data-i18n="batch.count">共 <b id="batchCount">0</b> 张图片</span>
+    </div>
+  </aside>
+
+  <main>
+    <div class="panel" style="min-height:400px">
+      <div class="panel-header">
+        <span data-i18n="results.title">📝 生成结果</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-ghost btn-sm" id="copyAllBtn" style="display:none" data-i18n="results.copyAll">📋 复制全部</button>
+        
+        <button class="btn btn-ghost btn-sm" id="regenerateAllBtn" style="display:none" data-i18n="results.regenerateAll">🔄 全部重新生成</button>
+        <select class="category-select" id="templateSelect" style="display:none;font-size:0.78rem;width:auto" title="输出模板">
+          <option value="plain" data-i18n="templates.plain">📝 纯文本</option>
+          <option value="sd" data-i18n="templates.sd">🎨 SD格式</option>
+          <option value="mj" data-i18n="templates.mj">🖼️ Midjourney</option>
+          <option value="nai" data-i18n="templates.nai">📖 NovelAI</option>
+        </select>
+        <select class="category-select" id="exportFormat" style="display:none;font-size:0.78rem;width:auto" title="导出格式">
+          <option value="json" data-i18n="export.json">💾 JSON</option>
+          <option value="txt" data-i18n="export.txt">📄 TXT</option>
+          <option value="md" data-i18n="export.md">📝 Markdown</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" id="exportBtn" style="display:none" data-i18n="export.btn">📥 导出</button>
+      </div>
+      <div class="panel-body">
+        <div class="image-tabs" id="imageTabs" style="display:none"></div>
+        <div id="statusArea"></div>
+        <div id="resultsArea">
+          <div class="empty-state">
+            <div class="icon">🎨</div>
+            <p data-i18n="results.emptyTitle">上传图片并点击「生成提示词」开始</p>
+            <p style="font-size:0.8rem;margin-top:4px" data-i18n="results.emptyDesc">AI 将自动拆解图片为多维度提示词</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ============================================================
+// I18N Dictionary — all translatable strings
+// ============================================================
+const I18N = {
+  zh: {
+    title: '🎨 图片提示词拆解器',
+    'mode.simple': '精简模式', 'mode.complex': '复杂模式', 'mode.ultra': '超精细模式', 'mode.custom': '⭾ 自定义',
+    'style.precise': '精准', 'style.fuzzy': '模糊',
+    'upload.title': '📷 上传图片',
+    'upload.hint': '点击或拖拽上传图片', 'upload.formats': '支持 JPG / PNG / WebP，最大 20MB',
+    'upload.urlPlaceholder': '或粘贴图片URL...', 'upload.loadBtn': '加载', 'upload.previewAlt': '预览',
+    'api.title': '⚙️ API 配置',
+    'api.provider': 'API 提供商',
+    'api.providerOpt1': 'OpenAI 兼容 (DeepSeek / OpenAI / 硅基流动等)',
+    'api.providerOpt2': 'Anthropic Claude',
+    'api.endpoint': 'API Endpoint', 'api.key': 'API Key', 'api.model': '模型名称',
+    'api.saveBtn': '💾 保存配置', 'api.savedNote': '配置保存在本地浏览器中',
+    'categories.title': '🎯 类别精细度设置', 'categories.hint': '（自定义模式下可独立调节）',
+    'generate.btn': '🚀 生成提示词', 'generate.loading': 'AI 正在分析图片...',
+    'results.title': '📝 生成结果',
+    'results.copyAll': '📋 复制全部', 'results.exportJson': '💾 导出JSON', 'results.regenerateAll': '🔄 全部重新生成',
+    'results.copyOne': '📋 复制此项', 'results.regenerateOne': '🔄 重新生成',
+    'results.collapse': '点击折叠 ▾',
+    'results.emptyTitle': '上传图片并点击「生成提示词」开始',
+    'results.emptyDesc': 'AI 将自动拆解图片为多维度提示词',
+    'results.emptyResponse': '模型返回的结果为空，请重试',
+    'status.loading': '正在调用 AI 模型分析图片，请稍候...',
+    'status.success': '生成完成！以下是各类别的提示词结果。',
+    'status.regenerated': '已重新生成',
+    'status.regenerating': '重新生成中...',
+    'status.failed': '生成失败',
+    'status.regenerateFailed': '重新生成失败',
+    'toast.noImage': '⚠️ 请先上传一张图片',
+    'toast.noApiKey': '⚠️ 请先填入 API Key',
+    'toast.copied': '✅ 已复制到剪贴板',
+    'toast.copiedAll': '✅ 全部提示词已复制到剪贴板',
+    'toast.exported': '✅ 已导出 JSON 文件',
+    'toast.saved': '✅ API 配置已保存',
+    'toast.invalidFormat': '⚠️ 请上传 JPG / PNG / WebP 格式的图片',
+    'toast.tooLarge': '⚠️ 图片大小不能超过 20MB',
+    'toast.urlError': '⚠️ 无法加载图片URL，请检查链接或尝试下载后上传',
+    'batch.clear': '🗑️ 清空队列', 'batch.count': '共 <b id="batchCount">0</b> 张图片',
+    'batch.processing': '处理中 {current}/{total}：{name}',
+    'batch.allDone': '全部 {count} 张图片完成！', 'batch.partialDone': '{done} 张完成，{failed} 张失败',
+    'history.title': '📋 历史记录', 'history.empty': '暂无历史记录',
+    'history.searchPlaceholder': '搜索历史记录...', 'history.clearAll': '🗑️ 清空',
+    'templates.plain': '📝 纯文本', 'templates.sd': '🎨 SD格式', 'templates.mj': '🖼️ Midjourney', 'templates.nai': '📖 NovelAI',
+    'export.btn': '📥 导出', 'export.json': '💾 JSON', 'export.txt': '📄 TXT', 'export.md': '📝 Markdown',
+    // Category names & descriptions
+    'cat.style': '画风', 'cat.style.desc': '艺术风格、绘画技法、整体视觉语言',
+    'cat.character': '角色', 'cat.character.desc': '人物外貌、神态、气质、体型特征',
+    'cat.clothing': '服装', 'cat.clothing.desc': '服饰款式、材质、配饰、穿搭细节',
+    'cat.action': '动作', 'cat.action.desc': '姿态、动态、手势、表情动作',
+    'cat.background': '背景', 'cat.background.desc': '场景环境、空间布局、景深层次',
+    'cat.lighting': '光影', 'cat.lighting.desc': '光源方向、光质、阴影、氛围光',
+    'cat.color': '色彩', 'cat.color.desc': '色调搭配、饱和度、色彩情绪',
+    'cat.composition': '构图', 'cat.composition.desc': '视角、镜头语言、画面布局',
+    'cat.atmosphere': '氛围', 'cat.atmosphere.desc': '情绪基调、叙事感、意境渲染',
+    'cat.details': '细节', 'cat.details.desc': '纹理、质感、精细元素、特效',
+    // Detail levels
+    'detail.simple': '精简', 'detail.complex': '复杂', 'detail.ultra': '超精细',
+    'detail.simple.prompt': '用1-2句简短精准的词语描述{category}。只抓最核心的特征，不要展开。',
+    'detail.complex.prompt': '用3-5句话详细描述{category}。包含具体细节和特征分析，形成完整的描述段落。',
+    'detail.ultra.prompt': '用极其详尽的6-8句话描述{category}。从多个维度全面展开，包含细微特征、材质、纹理、层次关系、技术细节等一切可见信息。像专业美术评论家一样细致入微地分析。',
+    // Style labels
+    'style.label.precise': '精准', 'style.label.fuzzy': '模糊',
+    // System prompt pieces
+    'sys.role': '你是一位世界顶级的图像分析专家和提示词工程师。请仔细观察这张图片，针对以下每个类别分别生成提示词描述。',
+    'sys.rules': '【重要规则】\n- 严格按JSON格式返回，每个类别对应一个字符串字段\n- 不要添加任何JSON之外的文字\n- 只描述你实际在图片中看到的内容，不要编造\n- 如果某个类别在图片中不明显或不适用，请如实说明',
+    'outputLang.label': '输出语言',
+    'sys.outputLang.zh': '【输出语言】\n请用中文输出所有提示词内容。',
+    'sys.outputLang.en': '【输出语言】\nPlease output all prompt content in English. Use natural, fluent English — do not mix languages.',
+    'sys.globalStyle': '【全局风格偏好】',
+    'sys.detailSection': '【各类别具体要求】',
+    'sys.styleNotePrecise': '【风格：精准】请用客观准确的语言，列举具体的视觉特征和事实。',
+    'sys.styleNoteFuzzy': '【风格：模糊】请用富有想象力和诗意的语言，传达感受而非事实。',
+    'sys.preciseDesc': '采用「精准」风格：客观、准确、事实性描述。使用专业术语，像技术文档一样严谨。直接描述所见即所得。',
+    'sys.fuzzyDesc': '采用「模糊」风格：感性、诗意、富有想象力。使用比喻和联想，像诗歌或小说片段一样优美。强调感受和氛围。',
+    'sys.returnFormat': '【返回格式】',
+    'sys.userPrompt': '请分析这张图片，按系统提示中的要求生成各类别的提示词。',
+    // Safety
+    'safety.on': '🛡️ 安全', 'safety.off': '⚠️ 安全关',
+    'safety.blocked': '🚫 已拦截', 'safety.clean': '✅ 合规',
+    'safety.warning': '⚠️ 该类别内容被安全过滤器标记，可能包含不适当内容。已自动替换为安全提示。请勿尝试生成违规内容。',
+    'safety.blockedText': '[此内容已被安全过滤器拦截]',
+    'sys.safetyRules': '【安全规则 — 必须严格遵守】\n- 绝对不能生成任何色情、低俗、性暗示、淫秽内容\n- 绝对不能描述裸体、性行为或任何形式的色情场景\n- 绝对不能使用侮辱性、歧视性、仇恨性言论\n- 绝对不能描述极端暴力、血腥、残忍的画面\n- 绝对不能涉及政治敏感话题或煽动性内容\n- 如果图片本身包含上述不当内容，直接拒绝分析，返回"无法分析此图片，内容不符合安全规范"\n- 仅进行客观、专业、合规的视觉分析',
+  },
+  en: {
+    title: '🎨 Image Prompt Decomposer',
+    'mode.simple': 'Simple', 'mode.complex': 'Complex', 'mode.ultra': 'Ultra', 'mode.custom': '⭾ Custom',
+    'style.precise': 'Precise', 'style.fuzzy': 'Fuzzy',
+    'upload.title': '📷 Upload Image',
+    'upload.hint': 'Click or drag to upload an image',
+    'upload.formats': 'Supports JPG / PNG / WebP, max 20MB',
+    'upload.urlPlaceholder': 'Or paste an image URL...', 'upload.loadBtn': 'Load',
+    'upload.previewAlt': 'Preview',
+    'api.title': '⚙️ API Config',
+    'api.provider': 'API Provider',
+    'api.providerOpt1': 'OpenAI Compatible (DeepSeek / OpenAI / SiliconFlow etc.)',
+    'api.providerOpt2': 'Anthropic Claude',
+    'api.endpoint': 'API Endpoint', 'api.key': 'API Key', 'api.model': 'Model Name',
+    'api.saveBtn': '💾 Save Config', 'api.savedNote': 'Config is saved in your browser locally',
+    'categories.title': '🎯 Category Detail Settings',
+    'categories.hint': '(adjustable in Custom mode)',
+    'generate.btn': '🚀 Generate Prompts', 'generate.loading': 'AI is analyzing the image...',
+    'results.title': '📝 Results',
+    'results.copyAll': '📋 Copy All', 'results.exportJson': '💾 Export JSON', 'results.regenerateAll': '🔄 Regenerate All',
+    'results.copyOne': '📋 Copy', 'results.regenerateOne': '🔄 Regenerate',
+    'results.collapse': 'Click to collapse ▾',
+    'results.emptyTitle': 'Upload an image and click "Generate Prompts" to start',
+    'results.emptyDesc': 'AI will automatically decompose the image into multi-dimensional prompts',
+    'results.emptyResponse': 'The model returned an empty result. Please try again.',
+    'status.loading': 'Analyzing image with AI model, please wait...',
+    'status.success': 'Done! Here are the prompt results for each category.',
+    'status.regenerated': 'has been regenerated',
+    'status.regenerating': 'Regenerating...',
+    'status.failed': 'Generation failed',
+    'status.regenerateFailed': 'Regeneration failed',
+    'toast.noImage': '⚠️ Please upload an image first',
+    'toast.noApiKey': '⚠️ Please enter your API Key',
+    'toast.copied': '✅ Copied to clipboard',
+    'toast.copiedAll': '✅ All prompts copied to clipboard',
+    'toast.exported': '✅ JSON file exported',
+    'toast.saved': '✅ API config saved',
+    'toast.invalidFormat': '⚠️ Please upload a JPG / PNG / WebP image',
+    'toast.tooLarge': '⚠️ Image size must not exceed 20MB',
+    'toast.urlError': '⚠️ Failed to load image URL. Please check the link or download and upload manually.',
+    'batch.clear': '🗑️ Clear Queue', 'batch.count': '<b id="batchCount">0</b> images total',
+    'batch.processing': 'Processing {current}/{total}: {name}',
+    'batch.allDone': 'All {count} images completed!', 'batch.partialDone': '{done} done, {failed} failed',
+    'history.title': '📋 History', 'history.empty': 'No history yet',
+    'history.searchPlaceholder': 'Search history...', 'history.clearAll': '🗑️ Clear All',
+    'templates.plain': '📝 Plain Text', 'templates.sd': '🎨 SD Format', 'templates.mj': '🖼️ Midjourney', 'templates.nai': '📖 NovelAI',
+    'export.btn': '📥 Export', 'export.json': '💾 JSON', 'export.txt': '📄 TXT', 'export.md': '📝 Markdown',
+    // Category names & descriptions
+    'cat.style': 'Art Style', 'cat.style.desc': 'Artistic style, technique, overall visual language',
+    'cat.character': 'Character', 'cat.character.desc': 'Appearance, expression, aura, physique',
+    'cat.clothing': 'Clothing', 'cat.clothing.desc': 'Outfit style, fabric, accessories, fashion details',
+    'cat.action': 'Action', 'cat.action.desc': 'Pose, motion, gestures, facial expression',
+    'cat.background': 'Background', 'cat.background.desc': 'Scene environment, spatial layout, depth of field',
+    'cat.lighting': 'Lighting', 'cat.lighting.desc': 'Light source direction, quality, shadows, ambient light',
+    'cat.color': 'Color', 'cat.color.desc': 'Color palette, saturation, color mood',
+    'cat.composition': 'Composition', 'cat.composition.desc': 'Perspective, camera language, frame layout',
+    'cat.atmosphere': 'Atmosphere', 'cat.atmosphere.desc': 'Emotional tone, narrative sense, ambiance',
+    'cat.details': 'Details', 'cat.details.desc': 'Textures, materials, fine elements, special effects',
+    // Detail levels
+    'detail.simple': 'Simple', 'detail.complex': 'Complex', 'detail.ultra': 'Ultra-Detailed',
+    'detail.simple.prompt': 'Describe {category} in 1-2 short, precise phrases. Capture only the most essential characteristics. Do not elaborate.',
+    'detail.complex.prompt': 'Describe {category} in 3-5 detailed sentences. Include specific details and characteristic analysis, forming a complete descriptive paragraph.',
+    'detail.ultra.prompt': 'Describe {category} in 6-8 extremely detailed sentences. Expand comprehensively from multiple dimensions, covering subtle features, materials, textures, spatial relationships, technical details — everything visible. Analyze with the meticulousness of a professional art critic.',
+    // Style labels
+    'style.label.precise': 'Precise', 'style.label.fuzzy': 'Fuzzy',
+    // System prompt pieces
+    'sys.role': 'You are a world-class image analysis expert and prompt engineer. Carefully observe this image and generate prompt descriptions for each of the following categories.',
+    'sys.rules': '[Important Rules]\n- Return results in strict JSON format, one string field per category\n- Do not add any text outside the JSON\n- Only describe what you actually see in the image; do not fabricate\n- If a category is not evident or applicable, state so honestly',
+    'outputLang.label': 'Output Language',
+    'sys.outputLang.zh': '[Output Language]\nPlease output all prompt content in Chinese. Use natural, fluent Chinese — do not mix languages.',
+    'sys.outputLang.en': '[Output Language]\nPlease output all prompt content in English. Use natural, fluent English — do not mix languages.',
+    'sys.globalStyle': '[Global Style Preference]',
+    'sys.detailSection': '[Category-Specific Requirements]',
+    'sys.styleNotePrecise': '[Style: Precise] Use objective, accurate language. List specific visual features and facts.',
+    'sys.styleNoteFuzzy': '[Style: Fuzzy] Use imaginative, poetic language. Convey feelings rather than facts.',
+    'sys.preciseDesc': 'Use a "Precise" style: objective, accurate, factual description. Employ professional terminology with technical-document-level rigor. Describe exactly what you see.',
+    'sys.fuzzyDesc': 'Use a "Fuzzy" style: evocative, poetic, imaginative. Employ metaphors and associations as elegantly as poetry or prose. Emphasize feelings and atmosphere.',
+    'sys.returnFormat': '[Return Format]',
+    'sys.userPrompt': 'Please analyze this image and generate prompt descriptions for each category according to the system instructions.',
+    // Safety
+    'safety.on': '🛡️ Safe', 'safety.off': '⚠️ Unsafe',
+    'safety.blocked': '🚫 Blocked', 'safety.clean': '✅ Safe',
+    'safety.warning': '⚠️ This category was flagged by the safety filter and may contain inappropriate content. It has been replaced with a safe message. Do not attempt to generate prohibited content.',
+    'safety.blockedText': '[This content has been blocked by the safety filter]',
+    'sys.safetyRules': '[Safety Rules — MUST FOLLOW]\n- Never generate any pornographic, vulgar, sexually suggestive, or obscene content\n- Never describe nudity, sexual acts, or any form of explicit scenes\n- Never use insulting, discriminatory, or hate speech\n- Never describe extreme violence, gore, or cruel imagery\n- Never involve politically sensitive topics or inflammatory content\n- If the image itself contains inappropriate content, refuse analysis directly: "Unable to analyze this image — content does not comply with safety guidelines"\n- Only provide objective, professional, compliant visual analysis',
+  }
+};
+
+// ---- Safety Keywords Blocklist ----
+const SAFETY_KEYWORDS = [
+  // === NSFW / Sexual (Chinese) ===
+  '裸体','全裸','半裸','裸照','裸聊','脱衣','露点','走光',
+  '色情','黄色','淫秽','淫乱','色欲','猥亵','下流','淫荡',
+  '性交','做爱','性爱','交配','性行为','性器官','生殖器',
+  '阴茎','阴道','乳房','乳头','阴部','肛门','龟头','阴蒂',
+  '口交','肛交','手淫','自慰','射精','高潮','潮吹',
+  '强奸','轮奸','迷奸','性侵','猥琐','痴汉',
+  '妓女','嫖娼','卖淫','嫖客','鸡女','鸭店',
+  'SM','BDSM','捆绑','调教','凌辱','SM调教',
+  '春药','催情','迷药','媚药','伟哥',
+  'AV','a片','毛片','黄片','成人影片','色情片',
+  '成人网站','色情网站','黄色网站',
+  '萝莉','幼女','幼童','恋童','儿童色情',
+  '乱伦','近亲','母子','父女',
+  // === NSFW / Sexual (English) ===
+  'porn','pornography','xxx','nsfw','hentai','ecchi',
+  'naked','nude','stripped','topless','bottomless',
+  'sex','sexual','intercourse','masturbat','orgasm','ejaculat',
+  'penis','vagina','breast','nipple','genital','anal','anus','clitoris',
+  'blowjob','cunnilingus','fellatio','dildo','vibrator',
+  'rape','molest','incest','pedophil','loli','underage',
+  'fetish','bdsm','bondage','dominatrix',
+  'escort','prostitut','hooker','whore','slut',
+  // === Extreme Violence / Gore ===
+  '血腥','分尸','碎尸','肢解','斩首','砍头','爆头',
+  '血腥虐杀','虐杀','残杀','屠杀','大屠杀',
+  '内脏','肠子','脑浆','眼珠','断肢','残肢',
+  '血肉模糊','鲜血淋漓','血泊','血淋淋',
+  'gore','mutilat','dismember','decapitat','eviscerat',
+  'bloodbath','carnage','slaughter','massacre',
+  // === Hate Speech / Discrimination ===
+  '种族歧视','种族主义','纳粹','法西斯','白人至上',
+  '歧视','辱骂','侮辱',
+  'nazi','racist','supremacist','genocide',
+  'faggot','nigger','retard','chink',
+  // === Drugs / Illegal Substances ===
+  '吸毒','毒品','海洛因','冰毒','可卡因','大麻','鸦片',
+  '摇头丸','k粉','麻古','杜冷丁',
+  '制毒','贩毒','种毒','吸毒工具',
+  'cocaine','heroin','meth','amphetamine','cannabis','marijuana',
+  'fentanyl','lsd','ecstasy','opium',
+  // === Self-harm / Suicide ===
+  '自杀','自残','割腕','跳楼','上吊','服毒',
+  'suicide','self-harm','selfharm','cutting',
+  // === Politically Sensitive ===
+  '恐怖主义','恐怖分子','圣战','isis','塔利班',
+  'terrorism','terrorist','jihad','taliban',
+];
+
+// Normalize: remove special chars, lowercase
+function normalizeText(text) {
+  return text.toLowerCase()
+    .replace(/[\s\-_.,;:!?()（）【】《》""''·]+/g, ' ')
+    .replace(/[^\w一-鿿\s]/g, '')
+    .trim();
+}
+
+function filterContent(text) {
+  if (!text || !state.safetyMode) return { safe: true, filtered: text, flags: [] };
+  const norm = normalizeText(text);
+  const flags = [];
+
+  for (const kw of SAFETY_KEYWORDS) {
+    if (norm.includes(normalizeText(kw))) {
+      flags.push(kw);
+    }
+  }
+
+  if (flags.length > 0) {
+    // Replace flagged content with blocked message
+    return {
+      safe: false,
+      filtered: t('safety.blockedText'),
+      flags: [...new Set(flags)],
+    };
+  }
+
+  return { safe: true, filtered: text, flags: [] };
+}
+
+// ---- Translation helper ----
+function t(key, params) {
+  let text = (I18N[state.lang] && I18N[state.lang][key]) || (I18N.zh && I18N.zh[key]) || key;
+  if (params) {
+    Object.keys(params).forEach(k => { text = text.replace('{' + k + '}', params[k]); });
+  }
+  return text;
+}
+
+// ---- Apply language to all data-i18n elements ----
+function applyLanguage() {
+  document.documentElement.lang = state.lang === 'en' ? 'en' : 'zh-CN';
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
+  // Update select options that have data-i18n
+  document.querySelectorAll('option[data-i18n]').forEach(opt => {
+    opt.textContent = t(opt.dataset.i18n);
+  });
+  // Update language toggle buttons
+  document.querySelectorAll('.lang-toggle').forEach(btn => {
+    btn.classList.toggle('active-lang', btn.dataset.lang === state.lang);
+  });
+  // Update toggle labels for precise/fuzzy
+  const tl1 = document.getElementById('toggleLabel');
+  const tl2 = document.getElementById('toggleLabel2');
+  if (tl1) tl1.textContent = t('style.precise');
+  if (tl2) tl2.textContent = t('style.fuzzy');
+}
+
+// ---- Theme ----
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', state.theme);
+  const tgl = document.getElementById('themeToggle');
+  if (tgl) tgl.textContent = state.theme === 'light' ? '☀️' : '🌙';
+}
+function toggleTheme() {
+  state.theme = state.theme === 'dark' ? 'light' : 'dark';
+  applyTheme();
+  saveSettings();
+}
+
+// ---- Category Definitions ----
+const CATEGORIES = [
+  { id: 'style',      icon: '🎨' },
+  { id: 'character',  icon: '🧑' },
+  { id: 'clothing',   icon: '👗' },
+  { id: 'action',     icon: '🏃' },
+  { id: 'background', icon: '🏞️' },
+  { id: 'lighting',   icon: '💡' },
+  { id: 'color',      icon: '🌈' },
+  { id: 'composition',icon: '📐' },
+  { id: 'atmosphere', icon: '🌫️' },
+  { id: 'details',    icon: '🔍' },
+];
+
+function getCatName(id) { return t('cat.' + id); }
+function getCatDesc(id) { return t('cat.' + id + '.desc'); }
+function getDetailLabel(level) { return t('detail.' + level); }
+function getDetailPrompt(level, catName) { return t('detail.' + level + '.prompt', { category: catName }); }
+function getStyleLabel(style) { return t('style.label.' + style); }
+
+// ---- App State ----
+const state = {
+  lang: 'zh',
+  outputLang: 'zh',  // AI output language, independent of UI language
+  safetyMode: true,
+  theme: 'dark',
+  mode: 'simple',
+  styleMode: 'precise',
+  imageBase64: null,
+  imageMime: null,
+  generating: false,
+  results: {},
+  imageBatch: [],        // [{id, name, base64, mime, results:{}, status:'pending'|'running'|'done'|'error', error:null}]
+  activeImageId: null,   // which image in the batch is currently displayed
+  batchProgress: { done: 0, total: 0 },
+  categoryConfig: {},
+  apiProvider: 'openai',
+  apiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions',
+  apiKey: '',
+  modelName: 'Qwen/Qwen3-VL-8B-Instruct',
+};
+
+CATEGORIES.forEach(c => {
+  state.categoryConfig[c.id] = { detail: 'simple', style: 'precise' };
+});
+
+// ---- Persistence ----
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('prompt-decomposer-settings'));
+    if (saved) {
+      if (saved.lang) state.lang = saved.lang;
+      if (saved.safetyMode !== undefined) state.safetyMode = saved.safetyMode;
+      if (saved.theme) state.theme = saved.theme;
+      if (saved.outputLang) state.outputLang = saved.outputLang;
+      if (saved.apiProvider) state.apiProvider = saved.apiProvider;
+      if (saved.apiEndpoint) {
+        // Auto-migrate old DeepSeek defaults to SiliconFlow
+        state.apiEndpoint = (saved.apiEndpoint === 'https://api.deepseek.com/v1/chat/completions')
+          ? 'https://api.siliconflow.cn/v1/chat/completions' : saved.apiEndpoint;
+      }
+      if (saved.apiKey) state.apiKey = saved.apiKey;
+      if (saved.modelName) {
+        // Auto-migrate old DeepSeek model to Qwen3-VL
+        state.modelName = (saved.modelName === 'deepseek-chat')
+          ? 'Qwen/Qwen3-VL-8B-Instruct' : saved.modelName;
+      }
+      if (saved.categoryConfig) state.categoryConfig = { ...state.categoryConfig, ...saved.categoryConfig };
+    }
+  } catch(e) {}
+}
+loadSettings();
+
+function saveSettings() {
+  try {
+    localStorage.setItem('prompt-decomposer-settings', JSON.stringify({
+      lang: state.lang,
+      safetyMode: state.safetyMode,
+      theme: state.theme,
+      outputLang: state.outputLang,
+      apiProvider: state.apiProvider,
+      apiEndpoint: state.apiEndpoint,
+      apiKey: state.apiKey,
+      modelName: state.modelName,
+      categoryConfig: state.categoryConfig,
+    }));
+  } catch(e) {}
+}
+
+// ---- IndexedDB History ----
+const DB_NAME = 'prompt-decomposer-history';
+const DB_VERSION = 1;
+let _db = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    if (_db) return resolve(_db);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('history')) {
+        const store = db.createObjectStore('history', { keyPath: 'id', autoIncrement: true });
+        store.createIndex('timestamp', 'timestamp', { unique: false });
+        store.createIndex('imageName', 'imageName', { unique: false });
+      }
+    };
+    req.onsuccess = (e) => { _db = e.target.result; resolve(_db); };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function saveToHistory(imageData) {
+  try {
+    const db = await openDB();
+    const tx = db.transaction('history', 'readwrite');
+    const store = tx.objectStore('history');
+    const entry = {
+      timestamp: Date.now(),
+      imageBase64: imageData.base64,
+      imageMime: imageData.mime || 'image/jpeg',
+      imageName: imageData.name || 'Unknown',
+      mode: state.mode,
+      styleMode: state.styleMode,
+      outputLang: state.outputLang,
+      results: imageData.results || {},
+      categoryConfig: JSON.parse(JSON.stringify(state.categoryConfig)),
+      safetyMode: state.safetyMode,
+    };
+    store.add(entry);
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = reject; });
+    return entry;
+  } catch(e) { console.error('saveToHistory error:', e); }
+}
+
+async function getHistoryEntries(query) {
+  try {
+    const db = await openDB();
+    const tx = db.transaction('history', 'readonly');
+    const store = tx.objectStore('history');
+    const index = store.index('timestamp');
+    const entries = [];
+    await new Promise((resolve, reject) => {
+      const req = index.openCursor(null, 'prev'); // newest first
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          const entry = cursor.value;
+          if (!query || (entry.imageName && entry.imageName.toLowerCase().includes(query.toLowerCase()))) {
+            entries.push(entry);
+          }
+          cursor.continue();
+        } else resolve();
+      };
+      req.onerror = reject;
+    });
+    return entries;
+  } catch(e) { console.error('getHistoryEntries error:', e); return []; }
+}
+
+async function deleteHistoryEntry(id) {
+  try {
+    const db = await openDB();
+    const tx = db.transaction('history', 'readwrite');
+    tx.objectStore('history').delete(id);
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = reject; });
+  } catch(e) { console.error('deleteHistoryEntry error:', e); }
+}
+
+async function clearAllHistory() {
+  try {
+    const db = await openDB();
+    const tx = db.transaction('history', 'readwrite');
+    tx.objectStore('history').clear();
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = reject; });
+    renderHistoryList();
+    showToast(state.lang === 'en' ? 'History cleared' : '历史记录已清空');
+  } catch(e) { console.error('clearAllHistory error:', e); }
+}
+
+function restoreFromHistory(id) {
+  getHistoryEntries().then(entries => {
+    const entry = entries.find(e => e.id === id);
+    if (!entry) return;
+    // Convert to batch format: single image batch
+    state.imageBatch = [{
+      id: 'hist_' + id,
+      name: entry.imageName,
+      base64: entry.imageBase64,
+      mime: entry.imageMime || 'image/jpeg',
+      results: entry.results,
+      status: 'done',
+      error: null,
+    }];
+    state.activeImageId = state.imageBatch[0].id;
+    state.imageBase64 = entry.imageBase64;
+    state.imageMime = entry.imageMime || 'image/jpeg';
+    state.results = entry.results;
+    state.mode = entry.mode || 'simple';
+    state.styleMode = entry.styleMode || 'precise';
+    if (entry.categoryConfig) state.categoryConfig = entry.categoryConfig;
+
+    // Update UI
+    const preview = $('#uploadPreview');
+    const placeholder = $('#uploadPlaceholder');
+    placeholder.style.display = 'none';
+    preview.src = 'data:' + (entry.imageMime || 'image/jpeg') + ';base64,' + entry.imageBase64;
+    preview.style.display = 'block';
+    $('#uploadZone').classList.add('has-image');
+
+    renderThumbnails();
+    updateBatchUI();
+    renderImageTabs();
+    renderResults();
+    updateModeTabs();
+    renderCategoryGrid();
+    $('#copyAllBtn').style.display = '';
+    
+    $('#regenerateAllBtn').style.display = '';
+
+    showToast(state.lang === 'en' ? 'History restored' : '历史记录已恢复');
+  });
+}
+
+async function renderHistoryList(query) {
+  const list = $('#historyList');
+  if (!list) return;
+  const entries = await getHistoryEntries(query);
+  const countEl = $('#historyCount');
+  if (countEl) countEl.textContent = entries.length > 0 ? '(' + entries.length + ')' : '';
+
+  if (entries.length === 0) {
+    list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3);font-size:0.8rem">' + t('history.empty') + '</div>';
+    return;
+  }
+  list.innerHTML = entries.map(entry => {
+    const date = new Date(entry.timestamp);
+    const dateStr = date.toLocaleDateString(state.lang === 'en' ? 'en-US' : 'zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const modeLabel = t('detail.' + (entry.mode || 'simple'));
+    const catCount = Object.keys(entry.results || {}).length;
+    return `
+      <div class="history-item" onclick="restoreFromHistory(${entry.id})" title="${escapeHtml(entry.imageName || '')}">
+        <img class="history-thumb" src="data:${entry.imageMime || 'image/jpeg'};base64,${entry.imageBase64}" alt="">
+        <div class="history-info">
+          <div class="name">${escapeHtml(entry.imageName || 'Unknown')}</div>
+          <div class="meta">${dateStr} · ${modeLabel} · ${catCount} ${state.lang === 'en' ? 'categories' : '类别'}</div>
+        </div>
+        <button class="history-delete" onclick="event.stopPropagation();deleteHistoryEntry(${entry.id}).then(() => renderHistoryList())" title="${state.lang === 'en' ? 'Delete' : '删除'}">✕</button>
+      </div>
+    `;
+  }).join('');
+}
+
+// ---- DOM helpers ----
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+// ---- Toast ----
+function showToast(msg, duration = 2000) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  $('#toastContainer').appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, duration);
+}
+
+// ---- Render Category Settings Grid ----
+function renderCategoryGrid() {
+  const grid = $('#categoryGrid');
+  grid.innerHTML = CATEGORIES.map(c => {
+    const cfg = state.categoryConfig[c.id];
+    const disabled = state.mode !== 'custom';
+    const detailLabel = getDetailLabel(cfg.detail);
+    const styleLabel = getStyleLabel(cfg.style);
+    const detailBadgeClass = 'badge-' + cfg.detail;
+    const styleBadgeClass = cfg.style === 'precise' ? 'badge-precise' : 'badge-fuzzy';
+    return `
+      <div class="category-row">
+        <span class="category-icon">${c.icon}</span>
+        <span class="category-name">${getCatName(c.id)}</span>
+        <span class="badge ${detailBadgeClass}">${detailLabel}</span>
+        <span class="badge ${styleBadgeClass}">${styleLabel}</span>
+        <div class="category-controls">
+          <select class="category-select detail-select" data-cat="${c.id}" ${disabled ? 'disabled' : ''}>
+            <option value="simple" ${cfg.detail === 'simple' ? 'selected' : ''}>${getDetailLabel('simple')}</option>
+            <option value="complex" ${cfg.detail === 'complex' ? 'selected' : ''}>${getDetailLabel('complex')}</option>
+            <option value="ultra" ${cfg.detail === 'ultra' ? 'selected' : ''}>${getDetailLabel('ultra')}</option>
+          </select>
+          <select class="category-select style-select" data-cat="${c.id}" ${disabled ? 'disabled' : ''}>
+            <option value="precise" ${cfg.style === 'precise' ? 'selected' : ''}>${getStyleLabel('precise')}</option>
+            <option value="fuzzy" ${cfg.style === 'fuzzy' ? 'selected' : ''}>${getStyleLabel('fuzzy')}</option>
+          </select>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  grid.querySelectorAll('.detail-select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      state.categoryConfig[sel.dataset.cat].detail = sel.value;
+      state.mode = 'custom';
+      updateModeTabs();
+      saveSettings();
+    });
+  });
+  grid.querySelectorAll('.style-select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      state.categoryConfig[sel.dataset.cat].style = sel.value;
+      state.mode = 'custom';
+      updateModeTabs();
+      saveSettings();
+    });
+  });
+}
+
+// ---- Mode Tabs ----
+function updateModeTabs() {
+  $$('.mode-tab').forEach(t => t.classList.remove('active'));
+  const activeTab = document.querySelector(`.mode-tab[data-mode="${state.mode}"]`);
+  if (activeTab) activeTab.classList.add('active');
+}
+
+function applyModePreset(mode) {
+  state.mode = mode;
+  if (mode !== 'custom') {
+    const detail = mode === 'simple' ? 'simple' : mode === 'complex' ? 'complex' : 'ultra';
+    CATEGORIES.forEach(c => {
+      state.categoryConfig[c.id] = { detail, style: state.styleMode };
+    });
+  }
+  updateModeTabs();
+  renderCategoryGrid();
+  saveSettings();
+}
+
+// ---- Image Handling (Batch) ----
+let batchIdCounter = 0;
+function nextBatchId() { return 'img_' + (++batchIdCounter); }
+
+function addImageToBatch(base64, mime, name) {
+  const img = {
+    id: nextBatchId(),
+    name: name || ('Image ' + batchIdCounter),
+    base64: base64,
+    mime: mime,
+    results: {},
+    status: 'pending',
+    error: null,
+  };
+  state.imageBatch.push(img);
+  // Keep backward compat: first image sets the legacy fields
+  if (!state.imageBase64) {
+    state.imageBase64 = base64;
+    state.imageMime = mime;
+  }
+  if (!state.activeImageId) state.activeImageId = img.id;
+  renderThumbnails();
+  updateBatchUI();
+}
+
+function handleImageFile(file) {
+  if (!file.type.match(/^image\/(jpeg|png|webp)$/)) {
+    showToast(t('toast.invalidFormat'));
+    return;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    showToast(t('toast.tooLarge'));
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    addImageToBatch(e.target.result.split(',')[1], file.type, file.name);
+    showPreview(e.target.result);
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleImageFiles(files) {
+  const validFiles = Array.from(files).filter(f => {
+    if (!f.type.match(/^image\/(jpeg|png|webp)$/)) return false;
+    if (f.size > 20 * 1024 * 1024) return false;
+    return true;
+  });
+  if (validFiles.length === 0) {
+    showToast(t('toast.invalidFormat'));
+    return;
+  }
+  if (validFiles.length < files.length) {
+    showToast((state.lang === 'en' ? 'Skipped ' : '已跳过 ') + (files.length - validFiles.length) + (state.lang === 'en' ? ' invalid files' : ' 个无效文件'));
+  }
+  validFiles.forEach((file, i) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      addImageToBatch(e.target.result.split(',')[1], file.type, file.name);
+      if (i === 0) showPreview(e.target.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function showPreview(dataUrl) {
+  const zone = $('#uploadZone');
+  const placeholder = $('#uploadPlaceholder');
+  const preview = $('#uploadPreview');
+  placeholder.style.display = 'none';
+  preview.src = dataUrl;
+  preview.style.display = 'block';
+  zone.classList.add('has-image');
+}
+
+function removeFromBatch(id) {
+  state.imageBatch = state.imageBatch.filter(img => img.id !== id);
+  if (state.activeImageId === id) {
+    state.activeImageId = state.imageBatch.length > 0 ? state.imageBatch[0].id : null;
+  }
+  if (state.imageBatch.length === 0) {
+    state.imageBase64 = null;
+    state.imageMime = null;
+    state.results = {};
+    $('#uploadPlaceholder').style.display = '';
+    $('#uploadPreview').style.display = 'none';
+    $('#uploadZone').classList.remove('has-image');
+    $('#resultsArea').innerHTML = '<div class="empty-state"><div class="icon">🎨</div><p>' + t('results.emptyTitle') + '</p><p style="font-size:0.8rem;margin-top:4px">' + t('results.emptyDesc') + '</p></div>';
+    $('#copyAllBtn').style.display = 'none';
+    
+    $('#regenerateAllBtn').style.display = 'none';
+  } else {
+    // Update legacy fields from first image
+    state.imageBase64 = state.imageBatch[0].base64;
+    state.imageMime = state.imageBatch[0].mime;
+    state.results = state.imageBatch.find(img => img.id === state.activeImageId)?.results || {};
+    renderResults();
+  }
+  renderThumbnails();
+  renderImageTabs();
+  updateBatchUI();
+}
+
+function clearBatch() {
+  state.imageBatch = [];
+  state.activeImageId = null;
+  state.imageBase64 = null;
+  state.imageMime = null;
+  state.results = {};
+  state.batchProgress = { done: 0, total: 0 };
+  $('#uploadPlaceholder').style.display = '';
+  $('#uploadPreview').style.display = 'none';
+  $('#uploadZone').classList.remove('has-image');
+  $('#resultsArea').innerHTML = '<div class="empty-state"><div class="icon">🎨</div><p>' + t('results.emptyTitle') + '</p><p style="font-size:0.8rem;margin-top:4px">' + t('results.emptyDesc') + '</p></div>';
+  $('#copyAllBtn').style.display = 'none';
+  
+  $('#regenerateAllBtn').style.display = 'none';
+  $('#imageTabs').style.display = 'none';
+  $('#progressWrap').classList.remove('active');
+  $('#progressText').classList.remove('active');
+  renderThumbnails();
+  updateBatchUI();
+}
+
+function renderThumbnails() {
+  const strip = $('#thumbnailStrip');
+  if (!strip) return;
+  strip.innerHTML = state.imageBatch.map(img => {
+    const statusIcon = { pending: '', running: '⏳', done: '✅', error: '❌' }[img.status];
+    const statusClass = img.status;
+    return `
+      <div class="thumbnail-item ${img.id === state.activeImageId ? 'active' : ''}" onclick="switchActiveImage('${img.id}')" title="${escapeHtml(img.name)}">
+        <img src="data:${img.mime};base64,${img.base64}" alt="${escapeHtml(img.name)}">
+        ${img.status !== 'pending' ? `<div class="thumb-status ${statusClass}">${statusIcon}</div>` : ''}
+        ${img.status === 'pending' ? `<button class="thumb-remove" onclick="event.stopPropagation();removeFromBatch('${img.id}')">✕</button>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function updateBatchUI() {
+  const count = state.imageBatch.length;
+  $('#batchActions').style.display = count > 0 ? 'flex' : 'none';
+  $('#batchCount').textContent = count;
+}
+
+function switchActiveImage(id) {
+  state.activeImageId = id;
+  const img = state.imageBatch.find(x => x.id === id);
+  if (img) {
+    state.imageBase64 = img.base64;
+    state.imageMime = img.mime;
+    state.results = img.results || {};
+  }
+  renderThumbnails();
+  renderImageTabs();
+  renderResults();
+  if (img && img.results && Object.keys(img.results).length > 0) {
+    showResultActions();
+  }
+}
+
+function renderImageTabs() {
+  const tabs = $('#imageTabs');
+  if (!tabs) return;
+  if (state.imageBatch.length <= 1) {
+    tabs.style.display = 'none';
+    return;
+  }
+  tabs.style.display = 'flex';
+  tabs.innerHTML = state.imageBatch.map(img => {
+    const statusIcon = { pending: '', running: '⏳', done: '✅', error: '❌' }[img.status];
+    return `
+      <button class="image-tab ${img.id === state.activeImageId ? 'active' : ''}" onclick="switchActiveImage('${img.id}')">
+        ${escapeHtml(img.name.substring(0, 20))}${img.name.length > 20 ? '...' : ''}
+        <span class="tab-status">${statusIcon}</span>
+      </button>
+    `;
+  }).join('');
+}
+
+function loadImageFromUrl(url) {
+  if (!url) return;
+  // Extract filename from URL
+  const urlName = url.split('/').pop().split('?')[0] || 'URL Image';
+  fetch(url)
+    .then(r => r.blob())
+    .then(blob => {
+      if (!blob.type.match(/^image\//)) throw new Error('Not an image');
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        addImageToBatch(e.target.result.split(',')[1], blob.type, urlName);
+        showPreview(e.target.result);
+      };
+      reader.readAsDataURL(blob);
+    })
+    .catch(() => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        addImageToBatch(dataUrl.split(',')[1], 'image/jpeg', urlName);
+        showPreview(dataUrl);
+      };
+      img.onerror = () => showToast(t('toast.urlError'));
+      img.src = url;
+    });
+}
+
+// ---- Build System Prompt ----
+function buildSystemPrompt() {
+  const globalStyle = state.styleMode;
+  let prompt = t('sys.role') + '\n\n';
+  prompt += t('sys.rules') + '\n\n';
+  if (state.safetyMode) { prompt += t('sys.safetyRules') + '\n\n'; }
+  prompt += t('sys.outputLang.' + state.outputLang) + '\n\n';
+  prompt += t('sys.globalStyle') + '\n';
+  prompt += (globalStyle === 'precise' ? t('sys.preciseDesc') : t('sys.fuzzyDesc')) + '\n\n';
+  prompt += t('sys.detailSection') + '\n';
+
+  CATEGORIES.forEach(c => {
+    const cfg = state.categoryConfig[c.id];
+    const catName = getCatName(c.id);
+    const detailLabel = getDetailLabel(cfg.detail);
+    const styleNote = cfg.style === 'precise' ? t('sys.styleNotePrecise') : t('sys.styleNoteFuzzy');
+    const detailPrompt = getDetailPrompt(cfg.detail, catName);
+    prompt += `\n■ ${c.icon} ${catName}（${detailLabel}）\n${styleNote}\n${detailPrompt}\n`;
+  });
+
+  prompt += '\n■ ❌ ' + (state.outputLang === 'en' ? 'Negative Prompt' : '负向提示词') + '\n';
+  prompt += (state.outputLang === 'en'
+    ? 'Generate a negative prompt based on the image quality issues you observe. Include common negative tags like low quality, blurry, bad anatomy, watermark, text, artifacts, distortion, etc. as well as anything specific to avoid for this image style. Keep it as comma-separated tags.'
+    : '根据图片中可能存在的质量问题，生成负向提示词。包括常见的负面标签如低质量、模糊、糟糕的人体结构、水印、文字、伪影、变形等，以及针对此图片风格需要避免的特定内容。以逗号分隔的标签形式输出。') + '\n';
+
+  prompt += '\n' + t('sys.returnFormat') + '\n{\n';
+  CATEGORIES.forEach(c => {
+    prompt += `  "${c.id}": "${getCatName(c.id)} ${state.outputLang === 'en' ? 'prompt...' : '提示词...'}",\n`;
+  });
+  prompt += '  "_negative": "' + (state.outputLang === 'en' ? 'negative prompt tags...' : '负向提示词标签...') + '"\n';
+  prompt += '}';
+  return prompt;
+}
+
+// ---- API Call ----
+async function callVisionAPI(systemPrompt, imgBase64, imgMime) {
+  const provider = state.apiProvider;
+  const userPromptText = t('sys.userPrompt');
+  const b64 = imgBase64 || state.imageBase64;
+  const mime = imgMime || state.imageMime;
+
+  if (provider === 'claude') {
+    const endpoint = state.apiEndpoint || 'https://api.anthropic.com/v1/messages';
+    const body = {
+      model: state.modelName || 'claude-sonnet-5',
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mime || 'image/jpeg', data: b64 } },
+          { type: 'text', text: userPromptText }
+        ]
+      }]
+    };
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': state.apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) { const err = await resp.text(); throw new Error(`Claude API Error (${resp.status}): ${err}`); }
+    const data = await resp.json();
+    return parseJsonResponse(data.content?.[0]?.text || '');
+  } else {
+    const endpoint = state.apiEndpoint || 'https://api.siliconflow.cn/v1/chat/completions';
+    const body = {
+      model: state.modelName || 'Qwen/Qwen3-VL-8B-Instruct',
+      max_tokens: 4096,
+      temperature: 0.7,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: [
+          { type: 'image_url', image_url: { url: `data:${mime || 'image/jpeg'};base64,${b64}`, detail: 'high' } },
+          { type: 'text', text: userPromptText }
+        ]}
+      ]
+    };
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.apiKey}` },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) { const err = await resp.text(); throw new Error(`API Error (${resp.status}): ${err}`); }
+    const data = await resp.json();
+    return parseJsonResponse(data.choices?.[0]?.message?.content || '');
+  }
+}
+
+function parseJsonResponse(text) {
+  try { return JSON.parse(text); } catch(e) {}
+  const codeMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (codeMatch) { try { return JSON.parse(codeMatch[1]); } catch(e) {} }
+  const objMatch = text.match(/\{[\s\S]*\}/);
+  if (objMatch) { try { return JSON.parse(objMatch[0]); } catch(e) {} }
+  const result = {};
+  CATEGORIES.forEach(c => {
+    const regex = new RegExp(`["']?${c.id}["']?\s*[:：]\s*["']([^"']+)["']`, 'i');
+    const m = text.match(regex);
+    if (m) result[c.id] = m[1];
+  });
+  if (Object.keys(result).length > 0) return result;
+  return { style: text };
+}
+
+// ---- Generate ----
+async function generatePrompts() {
+  // If batch has multiple images, process them all
+  if (state.imageBatch.length > 1) {
+    return generateBatchPrompts();
+  }
+  // Single image mode (original behavior)
+  if (!state.imageBase64) { showToast(t('toast.noImage')); return; }
+  state.apiKey = $('#apiKey').value.trim();
+  state.apiEndpoint = $('#apiEndpoint').value.trim();
+  state.modelName = $('#modelName').value.trim();
+  state.apiProvider = $('#apiProvider').value;
+  if (!state.apiKey) { showToast(t('toast.noApiKey')); return; }
+
+  state.generating = true;
+  const btn = $('#generateBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> ' + t('generate.loading');
+
+  const statusArea = $('#statusArea');
+  statusArea.innerHTML = '<div class="status-bar status-loading"><span class="spinner"></span> ' + t('status.loading') + '</div>';
+
+  try {
+    const systemPrompt = buildSystemPrompt();
+    console.log('System Prompt:', systemPrompt);
+    const results = await callVisionAPI(systemPrompt, state.imageBase64, state.imageMime);
+    state.results = results;
+    // Save to batch if exists
+    if (state.imageBatch.length === 1) {
+      state.imageBatch[0].results = results;
+      state.imageBatch[0].status = 'done';
+    }
+    // Auto-save to history
+    saveToHistory({ base64: state.imageBase64, mime: state.imageMime, name: state.imageBatch[0]?.name || 'Image', results: results });
+    renderHistoryList();
+    renderResults();
+    renderImageTabs();
+    renderThumbnails();
+    statusArea.innerHTML = '<div class="status-bar status-success">✅ ' + t('status.success') + '</div>';
+    $('#copyAllBtn').style.display = '';
+    
+    $('#regenerateAllBtn').style.display = '';
+  } catch (err) {
+    console.error('Generate error:', err);
+    if (state.imageBatch.length === 1) {
+      state.imageBatch[0].status = 'error';
+      state.imageBatch[0].error = err.message;
+    }
+    statusArea.innerHTML = '<div class="status-bar status-error">❌ ' + t('status.failed') + '：' + err.message + '</div>';
+  } finally {
+    state.generating = false;
+    btn.disabled = false;
+    btn.innerHTML = t('generate.btn');
+  }
+}
+
+async function generateBatchPrompts() {
+  state.apiKey = $('#apiKey').value.trim();
+  state.apiEndpoint = $('#apiEndpoint').value.trim();
+  state.modelName = $('#modelName').value.trim();
+  state.apiProvider = $('#apiProvider').value;
+  if (!state.apiKey) { showToast(t('toast.noApiKey')); return; }
+
+  state.generating = true;
+  const btn = $('#generateBtn');
+  btn.disabled = true;
+  const statusArea = $('#statusArea');
+  const progressWrap = $('#progressWrap');
+  const progressFill = $('#progressFill');
+  const progressText = $('#progressText');
+
+  const pending = state.imageBatch.filter(img => img.status === 'pending' || img.status === 'error');
+  pending.forEach(img => { img.status = 'pending'; img.error = null; });
+  state.batchProgress = { done: 0, total: pending.length };
+
+  progressWrap.classList.add('active');
+  progressText.classList.add('active');
+  renderThumbnails();
+  renderImageTabs();
+
+  for (let i = 0; i < pending.length; i++) {
+    const img = pending[i];
+    img.status = 'running';
+    renderThumbnails();
+    renderImageTabs();
+    $('#imageTabs').style.display = state.imageBatch.length > 1 ? 'flex' : 'none';
+
+    progressFill.style.width = ((i / pending.length) * 100) + '%';
+    progressText.textContent = (state.lang === 'en' ? `Processing ${i + 1}/${pending.length}: ${img.name}` : `处理中 ${i + 1}/${pending.length}：${img.name}`);
+    statusArea.innerHTML = '<div class="status-bar status-loading"><span class="spinner"></span> ' + t('status.loading') + ' (' + (i + 1) + '/' + pending.length + ')</div>';
+    btn.innerHTML = '<span class="spinner"></span> ' + (state.lang === 'en' ? `Processing ${i + 1}/${pending.length}...` : `处理中 ${i + 1}/${pending.length}...`);
+
+    try {
+      const systemPrompt = buildSystemPrompt();
+      const results = await callVisionAPI(systemPrompt, img.base64, img.mime);
+      img.results = results;
+      img.status = 'done';
+      state.batchProgress.done = i + 1;
+      // Auto-save to history
+      saveToHistory({ base64: img.base64, mime: img.mime, name: img.name, results: results });
+    } catch (err) {
+      console.error('Batch error for', img.name, err);
+      img.status = 'error';
+      img.error = err.message;
+    }
+
+    progressFill.style.width = (((i + 1) / pending.length) * 100) + '%';
+    renderThumbnails();
+    renderImageTabs();
+  }
+
+  // After batch complete, switch to first image with results
+  const firstDone = state.imageBatch.find(img => img.status === 'done');
+  if (firstDone) {
+    switchActiveImage(firstDone.id);
+  } else if (state.imageBatch.length > 0) {
+    switchActiveImage(state.imageBatch[0].id);
+  }
+
+  const doneCount = state.imageBatch.filter(img => img.status === 'done').length;
+  const errCount = state.imageBatch.filter(img => img.status === 'error').length;
+  if (errCount === 0) {
+    statusArea.innerHTML = '<div class="status-bar status-success">✅ ' + (state.lang === 'en' ? `All ${doneCount} images completed!` : `全部 ${doneCount} 张图片完成！`) + '</div>';
+  } else {
+    statusArea.innerHTML = '<div class="status-bar status-error">⚠️ ' + (state.lang === 'en' ? `${doneCount} done, ${errCount} failed` : `${doneCount} 张完成，${errCount} 张失败`) + '</div>';
+  }
+
+  $('#copyAllBtn').style.display = '';
+  
+  $('#regenerateAllBtn').style.display = '';
+
+  state.generating = false;
+  btn.disabled = false;
+  btn.innerHTML = t('generate.btn');
+  progressWrap.classList.remove('active');
+  progressText.classList.remove('active');
+}
+
+// ---- Render Results ----
+function renderResults() {
+  const area = $('#resultsArea');
+  const results = state.results;
+  const cards = CATEGORIES.filter(c => results[c.id]).map(c => {
+    const rawText = results[c.id];
+    const filterResult = filterContent(rawText);
+    const displayText = filterResult.filtered;
+    const isBlocked = !filterResult.safe;
+    const cfg = state.categoryConfig[c.id];
+    const detailLabel = getDetailLabel(cfg.detail);
+    const styleLabel = getStyleLabel(cfg.style);
+    const detailBadgeClass = 'badge-' + cfg.detail;
+    const styleBadgeClass = cfg.style === 'precise' ? 'badge-precise' : 'badge-fuzzy';
+    const safetyBadge = isBlocked
+      ? `<span class="safety-blocked">${t('safety.blocked')}</span>`
+      : `<span class="safety-clean">${t('safety.clean')}</span>`;
+    const warningHtml = isBlocked
+      ? `<div class="safety-warning">🚫 ${t('safety.warning')}</div>`
+      : '';
+    return `
+      <div class="result-card open" id="card-${c.id}">
+        <div class="result-card-header" onclick="toggleCard('${c.id}')">
+          <h4>
+            <span>${c.icon}</span> ${getCatName(c.id)}
+            <span class="badge ${detailBadgeClass}">${detailLabel}</span>
+            <span class="badge ${styleBadgeClass}">${styleLabel}</span>
+            ${state.safetyMode ? safetyBadge : ''}
+          </h4>
+          <span style="font-size:0.7rem;color:var(--text3)">${t('results.collapse')}</span>
+        </div>
+        <div class="result-card-body">
+          <div class="result-text" onclick="${isBlocked ? '' : "startEdit('" + c.id + "')"}" style="${isBlocked ? '' : 'cursor:pointer'}" title="${isBlocked ? '' : (state.lang === 'en' ? 'Click to edit' : '点击编辑')}">${escapeHtml(displayText)}</div>
+          ${warningHtml}
+          <div class="result-actions">
+            <button class="btn btn-outline btn-sm" onclick="copyText('${c.id}')" ${isBlocked ? 'disabled' : ''}>${t('results.copyOne')}</button>
+            ${isBlocked ? '' : `<button class="btn btn-ghost btn-sm" onclick="startEdit('${c.id}')">✏️ ${state.lang === 'en' ? 'Edit' : '编辑'}</button>`}
+            <button class="btn btn-ghost btn-sm" onclick="regenerateOne('${c.id}')">${t('results.regenerateOne')}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Negative prompt card
+  if (results._negative) {
+    const negFilter = filterContent(results._negative);
+    const negDisplay = negFilter.filtered;
+    const negBlocked = !negFilter.safe;
+    const negSafety = negBlocked
+      ? `<span class="safety-blocked">${t('safety.blocked')}</span>`
+      : `<span class="safety-clean">${t('safety.clean')}</span>`;
+    const negWarning = negBlocked
+      ? `<div class="safety-warning">🚫 ${t('safety.warning')}</div>`
+      : '';
+    cards += `
+      <div class="result-card open" id="card-_negative" style="border-color:var(--red);border-left:3px solid var(--red)">
+        <div class="result-card-header" onclick="toggleCard('_negative')" style="background:var(--red-bg)">
+          <h4>
+            <span>❌</span> ${state.lang === 'en' ? 'Negative Prompt' : '负向提示词'}
+            ${state.safetyMode ? negSafety : ''}
+          </h4>
+          <span style="font-size:0.7rem;color:var(--text3)">${t('results.collapse')}</span>
+        </div>
+        <div class="result-card-body">
+          <div class="result-text">${escapeHtml(negDisplay)}</div>
+          ${negWarning}
+          <div class="result-actions">
+            <button class="btn btn-outline btn-sm" onclick="copyText('_negative')" ${negBlocked ? 'disabled' : ''}>${t('results.copyOne')}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  area.innerHTML = cards || ('<div class="empty-state"><div class="icon">🤔</div><p>' + t('results.emptyResponse') + '</p></div>');
+}
+
+// ---- Inline Editing ----
+function startEdit(catId) {
+  const card = document.getElementById('card-' + catId);
+  if (!card) return;
+  const textDiv = card.querySelector('.result-text');
+  if (!textDiv || textDiv.classList.contains('editing')) return;
+  const currentText = state.results[catId] || '';
+  const ta = document.createElement('textarea');
+  ta.className = 'result-text-edit';
+  ta.value = currentText;
+  ta.setAttribute('data-cat', catId);
+  textDiv.classList.add('editing');
+  textDiv.innerHTML = '';
+  textDiv.appendChild(ta);
+  const hint = document.createElement('div');
+  hint.className = 'edit-hint';
+  hint.textContent = state.lang === 'en' ? 'Ctrl+Enter to save · Click elsewhere to cancel' : 'Ctrl+Enter 保存 · 点击别处取消';
+  textDiv.appendChild(hint);
+  ta.focus();
+  ta.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'Enter') {
+      e.preventDefault();
+      saveEdit(catId, ta.value);
+    }
+    if (e.key === 'Escape') {
+      cancelEdit(catId);
+    }
+  });
+  ta.addEventListener('blur', () => {
+    // Delay to allow save button click
+    setTimeout(() => {
+      if (textDiv.classList.contains('editing')) {
+        cancelEdit(catId);
+      }
+    }, 200);
+  });
+}
+
+function saveEdit(catId, newText) {
+  state.results[catId] = newText.trim();
+  // Sync to active batch image
+  const activeImg = state.imageBatch.find(img => img.id === state.activeImageId);
+  if (activeImg) activeImg.results = { ...state.results };
+  renderResults();
+  showToast(state.lang === 'en' ? 'Saved ✓' : '已保存 ✓');
+}
+
+function cancelEdit(catId) {
+  // Re-render to restore original view
+  const card = document.getElementById('card-' + catId);
+  if (card) {
+    const textDiv = card.querySelector('.result-text');
+    if (textDiv) textDiv.classList.remove('editing');
+  }
+  renderResults();
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function toggleCard(id) { document.getElementById('card-' + id).classList.toggle('open'); }
+
+// ---- Result Action Helpers ----
+function showResultActions() {
+  $('#copyAllBtn').style.display = '';
+  $('#exportBtn').style.display = '';
+  $('#regenerateAllBtn').style.display = '';
+  $('#templateSelect').style.display = '';
+  $('#exportFormat').style.display = '';
+}
+function hideResultActions() {
+  $('#copyAllBtn').style.display = 'none';
+  $('#exportBtn').style.display = 'none';
+  $('#regenerateAllBtn').style.display = 'none';
+  $('#templateSelect').style.display = 'none';
+  $('#exportFormat').style.display = 'none';
+}
+
+// ---- Template Formatters ----
+function formatPrompts(templateId) {
+  const cats = CATEGORIES.filter(c => state.results[c.id]);
+  const positive = cats.map(c => state.results[c.id]).filter(Boolean);
+  const negative = state.results._negative || '';
+
+  switch (templateId) {
+    case 'sd': {
+      // Stable Diffusion format
+      const qualityTags = '(masterpiece, best quality:1.2), (ultra detailed:1.1)';
+      const promptTags = positive.map(p => p.replace(/[,，]/g, ' ').trim()).join(', ');
+      let result = qualityTags + ', ' + promptTags;
+      if (negative) result += '\nNegative prompt: ' + negative;
+      return result;
+    }
+    case 'mj': {
+      // Midjourney format
+      const promptText = positive.join(' | ');
+      let result = '/imagine prompt: ' + promptText + ' --ar 16:9 --v 6 --style raw';
+      if (negative) result += ' --no ' + negative.replace(/[,，]/g, '').substring(0, 200);
+      return result;
+    }
+    case 'nai': {
+      // NovelAI format
+      const tags = ['masterpiece', 'best quality', 'amazing quality', 'great quality', 'very aesthetic', 'absurdres'];
+      const promptTags = positive.map(p => p.replace(/[,，]/g, ' ').replace(/[.。]/g, ',').trim()).join(', ');
+      let result = tags.join(', ') + ', ' + promptTags;
+      if (negative) result += '\nNegative: ' + negative;
+      return result;
+    }
+    default: {
+      // Plain text
+      return cats.map(c => '【' + getCatName(c.id) + '】\n' + state.results[c.id]).join('\n\n');
+    }
+  }
+}
+
+function copyText(catId) {
+  const text = state.results[catId];
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => showToast(t('toast.copied')));
+}
+
+function copyAll() {
+  const templateId = $('#templateSelect')?.value || 'plain';
+  const text = formatPrompts(templateId);
+  navigator.clipboard.writeText(text).then(() => showToast(t('toast.copiedAll')));
+}
+
+function doExport() {
+  const format = $('#exportFormat')?.value || 'json';
+  const cats = CATEGORIES.filter(c => state.results[c.id]);
+  let content, filename, mimeType;
+
+  switch (format) {
+    case 'txt':
+      content = cats.map(c => '【' + getCatName(c.id) + '】\n' + state.results[c.id]).join('\n\n');
+      if (state.results._negative) content += '\n\n【Negative Prompt】\n' + state.results._negative;
+      filename = 'prompts.txt'; mimeType = 'text/plain';
+      break;
+    case 'md':
+      content = '# 🎨 Image Prompt Analysis\n\n';
+      content += '*Generated: ' + new Date().toISOString().split('T')[0] + ' | Mode: ' + t('detail.' + state.mode) + ' | Style: ' + t('style.label.' + state.styleMode) + '*\n\n';
+      cats.forEach(c => {
+        content += '## ' + c.icon + ' ' + getCatName(c.id) + '\n\n' + state.results[c.id] + '\n\n';
+      });
+      if (state.results._negative) content += '## ❌ Negative Prompt\n\n' + state.results._negative + '\n\n';
+      content += '---\n*Generated by [Prompt Decomposer]*';
+      filename = 'prompts.md'; mimeType = 'text/markdown';
+      break;
+    default: // json
+      const data = {};
+      cats.forEach(c => { if (state.results[c.id]) data[getCatName(c.id)] = state.results[c.id]; });
+      if (state.results._negative) data['Negative Prompt'] = state.results._negative;
+      content = JSON.stringify(data, null, 2);
+      filename = 'prompts.json'; mimeType = 'application/json';
+  }
+
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+  showToast(t('toast.exported'));
+}
+
+async function regenerateOne(catId) {
+  if (state.generating) return;
+  state.apiKey = $('#apiKey').value.trim();
+  state.apiEndpoint = $('#apiEndpoint').value.trim();
+  state.modelName = $('#modelName').value.trim();
+  state.apiProvider = $('#apiProvider').value;
+  if (!state.imageBase64 || !state.apiKey) { showToast(t('toast.noApiKey')); return; }
+
+  const c = CATEGORIES.find(x => x.id === catId);
+  if (!c) return;
+
+  state.generating = true;
+  const card = document.getElementById('card-' + catId);
+  if (card) {
+    card.querySelector('.result-card-body').innerHTML = '<div class="status-bar status-loading"><span class="spinner"></span> ' + t('status.regenerating') + '</div>';
+  }
+
+  const catName = getCatName(catId);
+  const cfg = state.categoryConfig[catId];
+  const detailPrompt = getDetailPrompt(cfg.detail, catName);
+  const systemPrompt = cfg.style === 'precise'
+    ? t('sys.styleNotePrecise') + '\n' + detailPrompt
+    : t('sys.styleNoteFuzzy') + '\n' + detailPrompt;
+
+  try {
+    const provider = state.apiProvider;
+    let text = '';
+    const userPrompt = t('sys.userPrompt');
+
+    if (provider === 'claude') {
+      const endpoint = state.apiEndpoint || 'https://api.anthropic.com/v1/messages';
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': state.apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: state.modelName || 'claude-sonnet-5',
+          max_tokens: 2048,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: state.imageMime || 'image/jpeg', data: state.imageBase64 } },
+            { type: 'text', text: userPrompt }
+          ]}]
+        }),
+      });
+      const data = await resp.json();
+      text = data.content?.[0]?.text || '';
+    } else {
+      const endpoint = state.apiEndpoint || 'https://api.deepseek.com/v1/chat/completions';
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.apiKey}` },
+        body: JSON.stringify({
+          model: state.modelName || 'deepseek-chat',
+          max_tokens: 2048,
+          temperature: 0.7,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: [
+              { type: 'image_url', image_url: { url: `data:${state.imageMime || 'image/jpeg'};base64,${state.imageBase64}`, detail: 'high' } },
+              { type: 'text', text: userPrompt }
+            ]}
+          ]
+        }),
+      });
+      const data = await resp.json();
+      text = data.choices?.[0]?.message?.content || '';
+    }
+
+    state.results[catId] = text.trim();
+    // Sync back to active batch image
+    const activeImg = state.imageBatch.find(img => img.id === state.activeImageId);
+    if (activeImg) { activeImg.results = { ...state.results }; activeImg.status = 'done'; }
+    renderResults();
+    renderThumbnails();
+    renderImageTabs();
+    $('#statusArea').innerHTML = '<div class="status-bar status-success">✅ 「' + catName + '」' + t('status.regenerated') + '</div>';
+  } catch(err) {
+    if (card) {
+      card.querySelector('.result-card-body').innerHTML = '<div class="status-bar status-error">❌ ' + t('status.regenerateFailed') + '：' + err.message + '</div>';
+    }
+  } finally {
+    state.generating = false;
+  }
+}
+
+async function regenerateAll() {
+  if (state.generating) return;
+  for (const c of CATEGORIES) {
+    if (state.results[c.id]) { await regenerateOne(c.id); }
+  }
+}
+
+// ---- Init ----
+document.addEventListener('DOMContentLoaded', () => {
+  // Language toggle
+  $('#langZh').addEventListener('click', () => { if (state.lang !== 'zh') { state.lang = 'zh'; applyLanguage(); renderCategoryGrid(); if (Object.keys(state.results).length > 0) renderResults(); saveSettings(); } });
+  $('#langEn').addEventListener('click', () => { if (state.lang !== 'en') { state.lang = 'en'; applyLanguage(); renderCategoryGrid(); if (Object.keys(state.results).length > 0) renderResults(); saveSettings(); } });
+
+  // Theme toggle
+  $('#themeToggle').addEventListener('click', toggleTheme);
+
+  // Safety toggle
+  const safetyTgl = $('#safetyToggle');
+  if (safetyTgl) {
+    const updateSafetyToggle = () => {
+      safetyTgl.textContent = state.safetyMode ? t('safety.on') : t('safety.off');
+      safetyTgl.classList.toggle('off', !state.safetyMode);
+    };
+    safetyTgl.addEventListener('click', () => {
+      state.safetyMode = !state.safetyMode;
+      updateSafetyToggle();
+      if (Object.keys(state.results).length > 0) renderResults();
+      saveSettings();
+      showToast(state.safetyMode ? '🛡️ ' + (state.lang === 'en' ? 'Safety filter ON' : '安全过滤已开启') : '⚠️ ' + (state.lang === 'en' ? 'Safety filter OFF' : '安全过滤已关闭'));
+    });
+    updateSafetyToggle();
+  }
+
+  // Output language selector (separate from UI language)
+  const outLangSel = $('#outputLangSel');
+  if (outLangSel) {
+    outLangSel.value = state.outputLang;
+    outLangSel.addEventListener('change', () => {
+      state.outputLang = outLangSel.value;
+      saveSettings();
+    });
+  }
+
+  // Mode tabs
+  $$('.mode-tab').forEach(tab => {
+    tab.addEventListener('click', () => applyModePreset(tab.dataset.mode));
+  });
+
+  // Style toggle
+  $('#styleToggle').addEventListener('change', (e) => {
+    state.styleMode = e.target.checked ? 'fuzzy' : 'precise';
+    if (state.mode !== 'custom') {
+      CATEGORIES.forEach(c => { state.categoryConfig[c.id].style = state.styleMode; });
+      renderCategoryGrid();
+    }
+    saveSettings();
+  });
+
+  // Upload zone
+  const uploadZone = $('#uploadZone');
+  uploadZone.addEventListener('click', () => $('#fileInput').click());
+  uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+  uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault(); uploadZone.classList.remove('drag-over');
+    const files = e.dataTransfer.files;
+    if (files.length === 1) handleImageFile(files[0]);
+    else if (files.length > 1) handleImageFiles(files);
+  });
+  $('#fileInput').addEventListener('change', (e) => {
+    const files = e.target.files;
+    if (files.length === 1) handleImageFile(files[0]);
+    else if (files.length > 1) handleImageFiles(files);
+  });
+
+  // Clear batch
+  $('#clearBatchBtn').addEventListener('click', clearBatch);
+
+  // URL load
+  $('#loadUrlBtn').addEventListener('click', () => { const url = $('#urlInput').value.trim(); if (url) loadImageFromUrl(url); });
+  $('#urlInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { const url = $('#urlInput').value.trim(); if (url) loadImageFromUrl(url); } });
+
+  // API config toggle
+  $('#apiToggle').addEventListener('click', () => $('#apiCollapsible').classList.toggle('open'));
+
+  // History toggle
+  $('#historyToggle').addEventListener('click', () => $('#historyCollapsible').classList.toggle('open'));
+
+  // History search
+  let historySearchTimer;
+  $('#historySearch').addEventListener('input', (e) => {
+    clearTimeout(historySearchTimer);
+    historySearchTimer = setTimeout(() => renderHistoryList(e.target.value.trim()), 300);
+  });
+
+  // Clear all history
+  $('#clearAllHistory').addEventListener('click', () => {
+    if (confirm(state.lang === 'en' ? 'Delete all history? This cannot be undone.' : '确认清空全部历史记录？此操作不可撤销。')) {
+      clearAllHistory();
+    }
+  });
+
+  // API provider change
+  $('#apiProvider').addEventListener('change', (e) => {
+    state.apiProvider = e.target.value;
+    if (state.apiProvider === 'claude') {
+      $('#apiEndpoint').value = 'https://api.anthropic.com/v1/messages';
+      $('#modelName').value = 'claude-sonnet-5';
+    } else {
+      $('#apiEndpoint').value = 'https://api.siliconflow.cn/v1/chat/completions';
+      $('#modelName').value = 'Qwen/Qwen3-VL-8B-Instruct';
+    }
+    saveSettings();
+  });
+
+  // Save API config
+  $('#saveApiConfig').addEventListener('click', () => {
+    state.apiEndpoint = $('#apiEndpoint').value.trim();
+    state.apiKey = $('#apiKey').value.trim();
+    state.modelName = $('#modelName').value.trim();
+    state.apiProvider = $('#apiProvider').value;
+    saveSettings();
+    showToast(t('toast.saved'));
+  });
+
+  // Generate
+  $('#generateBtn').addEventListener('click', generatePrompts);
+
+  // Copy/export
+  $('#copyAllBtn').addEventListener('click', copyAll);
+  $('#exportBtn').addEventListener('click', doExport);
+  $('#regenerateAllBtn').addEventListener('click', regenerateAll);
+
+  // Keyboard shortcut
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); generatePrompts(); }
+  });
+
+  // Init UI
+  $('#apiProvider').value = state.apiProvider;
+  $('#apiEndpoint').value = state.apiEndpoint;
+  $('#apiKey').value = state.apiKey;
+  $('#modelName').value = state.modelName;
+  $('#styleToggle').checked = state.styleMode === 'fuzzy';
+  applyLanguage();
+  applyTheme();
+  updateModeTabs();
+  applyModePreset(state.mode);
+  renderHistoryList();
+
+  console.log('🎨 ' + t('title') + ' ready — ' + (state.lang === 'en' ? 'Click 中文/EN to switch language' : '点击 中文/EN 切换语言'));
+});
+</script>
+
+</body>
+</html>
